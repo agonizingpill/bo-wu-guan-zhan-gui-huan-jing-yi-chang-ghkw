@@ -2,7 +2,7 @@ import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 
-from src.utils.db import execute, execute_returning, fetch_one, wait_for_db
+from src.utils.db import execute, execute_returning, fetch_all, fetch_one, wait_for_db
 
 
 def password(value):
@@ -61,6 +61,52 @@ def seed_event(case_id, sample_id, score, threshold, anomaly_type, severity, sta
     return row['id']
 
 
+def seed_humidity_breach_demo(cases, base):
+    """湿度短时越限累计演示：7 段越限（每段 10 分钟），前 6 段已送审并结清，第 7 段留待下次送审。"""
+    from src.humidity_review import ensure_schema
+
+    case_id = get_case(('MC-05', '书画展厅', '二层 02 号展柜', 'PM-102', '明代绢本设色山水轴',
+                        19.0, 23.0, 45.0, 55.0, 'active', 'door-mc05'))
+    cases['MC-05'] = case_id
+    for index, values in enumerate([(21.4, 58.2, 640), (21.5, 58.9, 655), (21.6, 59.4, 660),
+                                    (21.7, 60.1, 672), (21.8, 60.6, 680), (21.9, 61.0, 690),
+                                    (22.0, 61.3, 695), (22.0, 61.1, 690)]):
+        sample(case_id, base + timedelta(minutes=index * 10), *values, False, '湿度短时反复越限观察样本')
+    ensure_schema()
+    sample_ids = [row['id'] for row in fetch_all(
+        'SELECT id FROM environment_samples WHERE case_id=%s ORDER BY sampled_at', (case_id,))]
+    pair_rows = fetch_all(
+        'SELECT sampled_at, LEAD(sampled_at) OVER (ORDER BY sampled_at) AS next_at FROM environment_samples '
+        'WHERE case_id=%s ORDER BY sampled_at', (case_id,))
+    for index in range(len(sample_ids) - 1):
+        execute(
+            '''INSERT INTO humidity_breach_segments
+               (case_id, start_sample_id, end_sample_id, started_at, ended_at, duration_seconds, status)
+               VALUES (%s,%s,%s,%s,%s,%s,'pending')
+               ON CONFLICT (case_id, start_sample_id, end_sample_id) DO NOTHING''',
+            (case_id, sample_ids[index], sample_ids[index + 1],
+             pair_rows[index]['sampled_at'], pair_rows[index]['next_at'], 600),
+        )
+    existing = fetch_one('SELECT id FROM humidity_review_submissions WHERE case_id=%s ORDER BY id LIMIT 1', (case_id,))
+    if existing:
+        return
+    supervisor = fetch_one("SELECT id FROM users WHERE username='guo-supervisor'")
+    first_six = sample_ids[:6]
+    submission = execute_returning(
+        '''INSERT INTO humidity_review_submissions
+           (case_id, status, total_duration_seconds, segment_count, review_note,
+            submitted_at, settled_by, settled_at)
+           VALUES (%s,'settled',3600,6,'夜班复核：湿度短时反复越限一小时，文物外观无异常，已调整恒湿机设定',
+                   %s, %s, %s) RETURNING id''',
+        (case_id, base + timedelta(minutes=65), supervisor['id'], base + timedelta(minutes=80)),
+    )
+    execute(
+        '''UPDATE humidity_breach_segments SET status='settled', submission_id=%s, settled_at=%s
+           WHERE case_id=%s AND start_sample_id = ANY(%s)''',
+        (submission['id'], base + timedelta(minutes=80), case_id, first_six),
+    )
+
+
 def main():
     wait_for_db()
     operator = get_user('lin-operator', '林芮 · 夜班值守', 'operator')
@@ -90,6 +136,8 @@ def main():
     for index, values in enumerate([(20.1, 50.0, 590), (20.0, 50.2, 605), (20.2, 49.8, 600), (20.1, 50.1, 610), (20.0, 49.9, 600), (20.2, 50.0, 615)]):
         sample(cases['MC-04'], base + timedelta(minutes=index * 10), *values, False, '日常巡检基线')
 
+    seed_humidity_breach_demo(cases, base)
+
     execute("UPDATE display_cases SET last_sample_at=(SELECT MAX(sampled_at) FROM environment_samples WHERE case_id=display_cases.id)")
     execute(
         '''INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, detail)
@@ -97,7 +145,7 @@ def main():
            WHERE NOT EXISTS (SELECT 1 FROM audit_logs WHERE action='seed_demo' AND detail->>'batch'='night-shift-2026-11-21')''',
         (operator['id'],),
     )
-    print('seed_demo complete: 4 display cases, 28 samples, 2 seeded anomaly events, 3 users')
+    print('seed_demo complete: 5 display cases, 36 samples, 2 seeded anomaly events, 7 humidity breach segments, 3 users')
 
 
 if __name__ == '__main__':

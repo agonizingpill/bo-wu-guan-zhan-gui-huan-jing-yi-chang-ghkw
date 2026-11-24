@@ -9,6 +9,8 @@ const state = {
   selectedEvent: null,
   notice: ''
 };
+window.__museumUser = state.user;
+window.addEventListener('humidity-review:changed', () => loadData());
 
 const api = async (path, options = {}) => {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -87,6 +89,9 @@ function renderContent() {
   if (state.page === 'inspections') target.innerHTML = inspectionsPage();
   if (state.page === 'case') target.innerHTML = casePage();
   bindPage();
+  if (state.page === 'anomalies' && window.humidityReview) {
+    window.humidityReview.mount(document.querySelector('#humidity-review-root'));
+  }
 }
 
 function monitorPage() {
@@ -105,7 +110,8 @@ function caseRow(c) { const health = c.active_event_count ? 'attention' : 'stead
 
 function anomaliesPage() {
   const selected = state.anomalies.find(item => item.id === state.selectedEvent) || state.anomalies[0];
-  return `<div class="split-layout"><section class="panel anomaly-list"><div class="panel-head"><div><p class="eyebrow">EVENT QUEUE / ${state.anomalies.length.toString().padStart(2,'0')}</p><h2>异常事件队列</h2></div><span class="filter-pill">全部 · ${state.anomalies.length}</span></div>${state.anomalies.length ? state.anomalies.map(eventRow).join('') : empty('目前没有待处置异常', '继续保持采样，新的异常会进入这里。')}</section><section class="panel detail-panel">${selected ? eventDetail(selected) : empty('选择一个异常事件', '从左侧队列打开处置详情。')}</section></div>`;
+  return `<div class="split-layout"><section class="panel anomaly-list"><div class="panel-head"><div><p class="eyebrow">EVENT QUEUE / ${state.anomalies.length.toString().padStart(2,'0')}</p><h2>异常事件队列</h2></div><span class="filter-pill">全部 · ${state.anomalies.length}</span></div>${state.anomalies.length ? state.anomalies.map(eventRow).join('') : empty('目前没有待处置异常', '继续保持采样，新的异常会进入这里。')}</section><section class="panel detail-panel">${selected ? eventDetail(selected) : empty('选择一个异常事件', '从左侧队列打开处置详情。')}</section></div>
+  <div id="humidity-review-root"></div>`;
 }
 function eventRow(e) { return `<button class="event-row ${state.selectedEvent===e.id?'selected':''}" data-event="${e.id}"><span class="severity ${e.severity}">${e.severity==='critical'?'!':'·'}</span><span><b>${esc(e.case_code)} · ${label(e.anomaly_type)}</b><small>${fmt(e.sampled_at)} · ${esc(e.reason)}</small></span><strong>${label(e.status)}</strong></button>`; }
 function eventDetail(e) { return `<div class="detail-kicker"><span class="severity ${e.severity}">${e.severity}</span><span>${label(e.anomaly_type)}</span><span>${label(e.status)}</span></div><h2>${esc(e.case_code)} / ${esc(e.artifact_title)}</h2><p class="detail-copy">${esc(e.reason)}</p><div class="data-strip"><div><small>异常分数</small><b>${Number(e.score).toFixed(3)}</b></div><div><small>采样时间</small><b>${fmt(e.sampled_at)}</b></div><div><small>门磁</small><b>${e.door_open?'开启干扰':'关闭'}</b></div></div><div class="measure-grid"><div><span>温度</span><b>${e.temperature} °C</b></div><div><span>相对湿度</span><b>${e.humidity} %</b></div><div><span>CO₂</span><b>${e.co2_ppm} ppm</b></div><div><span>连续计数</span><b>${e.consecutive_count}</b></div></div><div class="action-box"><p class="eyebrow">DUTY ACTION / 值守处置</p><div class="action-buttons">${e.door_context?'<button class="button amber" data-action="door">完成关门复核</button>':'<button class="button" data-action="adjust">记录环境调整</button>'}<button class="button" data-action="inspect">安排文物巡检</button>${e.status==='escalated'?'<button class="button dark" data-action="curator">记录馆长处置</button>':''}<button class="button primary" data-action="close">关闭异常</button></div><small>关闭条件：已完成值守动作 + 文物巡检通过。升级事件需追加馆长处置记录。</small></div>`; }
@@ -118,9 +124,9 @@ function caseDetail(c) { return `<div class="case-heading"><div><p class="eyebro
 function empty(title, copy) { return `<div class="empty"><div>○</div><h3>${title}</h3><p>${copy}</p></div>`; }
 
 function bind() {
-  document.querySelector('#login-form')?.addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { const data = await api('/login', { method: 'POST', body: JSON.stringify({ username: form.get('username'), password: form.get('password') }) }); state.token = data.access_token; state.user = data.user; localStorage.setItem('museum_token', state.token); localStorage.setItem('museum_user', JSON.stringify(state.user)); render(); await loadData(); } catch (error) { alert(error.message); } });
+  document.querySelector('#login-form')?.addEventListener('submit', async (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { const data = await api('/login', { method: 'POST', body: JSON.stringify({ username: form.get('username'), password: form.get('password') }) }); state.token = data.access_token; state.user = data.user; window.__museumUser = data.user; localStorage.setItem('museum_token', state.token); localStorage.setItem('museum_user', JSON.stringify(state.user)); render(); await loadData(); } catch (error) { alert(error.message); } });
   document.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => { state.page = button.dataset.page; render(); loadData(); }));
-  document.querySelector('#logout')?.addEventListener('click', () => { state.token = null; state.user = null; localStorage.clear(); render(); });
+  document.querySelector('#logout')?.addEventListener('click', () => { state.token = null; state.user = null; window.__museumUser = null; localStorage.clear(); render(); });
   document.querySelector('#refresh')?.addEventListener('click', () => loadData());
   bindPage();
 }

@@ -1,0 +1,40 @@
+.humidity-panel { margin-top: 25px; }
+.humidity-body { padding: 22px 25px 26px; }
+.humidity-rule { font-size: 12px; line-height: 1.7; color: var(--muted);
+  background: var(--cream); border-left: 3px solid var(--amber); padding: 12px 14px; margin: 0 0 20px; }
+.humidity-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.humidity-card { border: 1px solid var(--line); padding: 16px; background: white; display: grid; gap: 14px; }
+.humidity-card.due { border-color: var(--rust); box-shadow: 0 0 0 1px var(--rust) inset; }
+.humidity-card-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.humidity-card-head b, .humidity-card-head small { display: block; }
+.humidity-card-head b { font-size: 14px; margin: 4px 0 3px; }
+.humidity-card-head small { color: var(--muted); font-size: 11px; }
+.humidity-badge { font: 10px 'DM Mono', monospace; color: var(--paper); background: var(--rust);
+  padding: 5px 8px; white-space: nowrap; }
+.humidity-metrics { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line); }
+.humidity-metrics > div { padding: 10px 6px; border-right: 1px solid var(--line); }
+.humidity-metrics > div:last-child { border-right: 0; }
+.humidity-metrics small, .humidity-metrics b, .humidity-metrics span { display: block; }
+.humidity-metrics small { color: var(--muted); font-size: 10px; }
+.humidity-metrics b { font: 500 17px 'DM Mono', monospace; margin: 5px 0 2px; }
+.humidity-metrics span { font-size: 10px; color: var(--muted); }
+.humidity-card-actions { display: flex; flex-wrap: wrap; gap: 14px; }
+.humidity-section { margin-top: 24px; }
+.humidity-section h3 { margin-bottom: 12px; }
+.humidity-table { overflow: auto; border: 1px solid var(--line); }
+.humidity-table table { width: 100%; border-collapse: collapse; font-size: 12px; background: white; }
+.humidity-table th, .humidity-table td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line);
+  vertical-align: top; white-space: nowrap; }
+.humidity-table th { font: 11px 'DM Mono', monospace; color: var(--muted); background: var(--cream); }
+.humidity-status { font: 10px 'DM Mono', monospace; padding: 3px 7px; border: 1px solid var(--line); }
+.humidity-status.pending { color: var(--rust); border-color: var(--rust); }
+.humidity-status.submitted { color: var(--amber); border-color: var(--amber); }
+.humidity-status.settled { color: var(--green); border-color: var(--green); }
+.humidity-note { display: block; margin-top: 5px; white-space: normal; max-width: 260px; color: var(--muted); }
+.humidity-empty { color: var(--muted); font-size: 13px; padding: 14px 0; }
+.humidity-table form { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.humidity-table form input { width: 200px; padding: 7px 8px; font-size: 12px; border: 1px solid var(--line); }
+.humidity-table form button { border: 1px solid var(--night); background: var(--night); color: var(--paper);
+  padding: 7px 12px; font-size: 12px; cursor: pointer; }
+.humidity-table form button:disabled { opacity: .55; cursor: wait; }

@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import RobustScaler
 
+from src.humidity_review import sync_breach_segments
 from src.utils.db import clean, execute, execute_returning, fetch_all, fetch_one
 
 
@@ -31,11 +32,13 @@ def run_case_analysis(case_id: int, run_id: int):
     threshold = float(np.quantile(scores, CONTAMINATION))
     previous_flagged = 0
     created_events = []
+    outlier_sample_ids: set[int] = set()
 
     for row, label, score in zip(samples, labels, scores):
         abnormal = label == -1
         if abnormal:
             previous_flagged += 1
+            outlier_sample_ids.add(row['id'])
         else:
             previous_flagged = 0
         if not abnormal:
@@ -88,6 +91,9 @@ def run_case_analysis(case_id: int, run_id: int):
         'detector': 'IsolationForest(n_estimators=160, contamination=0.22, random_state=1069)',
         'completed_at': datetime.now(timezone.utc).isoformat(),
     }
+    # 湿度短时越限累计：按本次离群结果幂等入账，满 1 小时自动送馆长复核。
+    breach_inserted = sync_breach_segments(case_id, outlier_sample_ids)
+    metrics['humidity_breach_segments_new'] = breach_inserted
     execute(
         'UPDATE algorithm_runs SET status=\'succeeded\', metrics=%s::jsonb, result=%s::jsonb, updated_at=NOW() WHERE id=%s',
         (json.dumps(clean(metrics), ensure_ascii=False), json.dumps(clean(result), ensure_ascii=False), run_id),

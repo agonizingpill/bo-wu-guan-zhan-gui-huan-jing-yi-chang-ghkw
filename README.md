@@ -27,6 +27,7 @@
 - 没有已完成值守动作，或最近一次文物巡检不是 `pass`，主管不能关闭事件。
 - 同一展柜采样间隔超过 30 分钟会被拒绝，要求补齐缺测时段。
 - viewer 只能读取，operator 可录入采样和执行值守/巡检，supervisor 才能创建展柜和关闭异常。
+- 湿度反复短时越限即使没连成三个离群点也会计时：同柜相邻有效采样间隔不超过 30 分钟、前一条采样判离群且湿度越限，就把两条采样之间的时长计入湿度越限时段；未送审时段累计满 1 小时自动生成馆长复核送审单，主管只能整单结清送审时列明的时段，送审单创建后新入账的时段留待下次送审。
 
 ## 快速启动
 
@@ -79,6 +80,19 @@ Compose 恰好包含 `frontend`、`backend`、`worker`、`db`、`redis` 五个�
 
 门开采样只改变业务分类为门开干扰。连续异常计数由时间序列中的连续离群样本计算，达到 3 个时升级。少于 6 条有效采样时算法任务失败并把错误写入 `algorithm_runs.error`，便于重试。
 
+## 湿度短时越限累计与馆长复核
+
+没连成三个离群点的反复短时湿度越限同样会损伤文物，系统在每次算法分析后按下列口径累计（实现见 `backend/src/humidity_review.py`，由 worker 的 `run_case_analysis` 调用）。
+
+- 同一展柜相邻两条 `accepted` 采样间隔不超过 30 分钟；间隔超过 30 分钟的缺测段不计入。
+- 前一条采样在本次分析中被判为离群（IsolationForest 标签 -1），且相对湿度超出该展柜 `target_rh_min / target_rh_max` 窗口，就把两条采样之间的时长计入一条 `humidity_breach_segments` 时段。
+- 时段按 `(case_id, start_sample_id, end_sample_id)` 唯一约束幂等入账，同段重跑分析不重复计时。
+- 同一展柜未送审（`pending`）时段累计满 3600 秒即自动生成 `humidity_review_submissions` 送审单，列明时段全部转为 `submitted`；入账与送审在展柜级咨询锁内完成，评分与签认并发时不会把新时段卷入旧单，新入账时段保持 `pending` 留待下次送审。
+- 主管（supervisor）只能对送审单整单结清，结清时送审单及其列明时段一并转为 `settled` 并写入审计日志，不支持挑拣部分时段；重复结清返回 409。
+- 异常事件页面底部的「湿度短时越限累计」面板可查每个展柜的待送审/送审中/已结清累计时长与时段明细，viewer 与 operator 只读，主管可在面板内直接结清。
+
+接口前缀 `/humidity-reviews`：`GET /overview`、`GET /submissions`、`GET /cases/{case_id}/segments` 为登录可读，`POST /submissions/{id}/settle` 仅 supervisor。两张表在首次调用时由 `ensure_schema()` 运行时创建，无需额外迁移。
+
 ## 枚举出现位置
 
 - `CASE_STATUSES`、`ANOMALY_STATUSES`、`ANOMALY_TYPES`、`DUTY_ACTION_TYPES`、`CHECK_RESULTS` 位于 `backend/src/constants/enums.py`，数据库约束位于 `backend/migrations/001_init.sql`，前端展示映射位于 `frontend/src/app.js`。
@@ -92,12 +106,14 @@ backend/
   migrations/001_init.sql
   scripts/seed_demo.py
   src/main.py
+  src/humidity_review.py
   src/services/algorithm.py
   src/worker.py
 frontend/
   index.html
   nginx.conf
   src/app.js
+  src/humidity-review.js
   src/styles.css
 docker-compose.yml
 ```
